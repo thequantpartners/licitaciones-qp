@@ -34,7 +34,7 @@ async function testOpenRouter() {
     return;
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as any;
   console.log('✅ Conexión exitosa con OpenRouter!');
   console.log('Respuesta del modelo:', data.choices[0].message.content);
 }

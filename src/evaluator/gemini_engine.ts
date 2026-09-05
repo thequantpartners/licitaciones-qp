@@ -167,7 +167,7 @@ Devuelve el JSON con este esquema exacto:
       throw new Error(`Error en OpenRouter API (${response.status}): ${errText}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       throw new Error('OpenRouter devolvió una respuesta vacía.');
