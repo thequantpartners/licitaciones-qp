@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+landing/node_modules/
+
+# Next.js build output
+landing/.next/
+landing/out/
+
+# Build and dist
+dist/
+dist-*/
+
+# Environment variables
+.env
+.env*.local
+landing/.env*
+
+# Local storage and cache
+storage/raw_bases/*
+storage/matrices_generadas/*
+!storage/.gitkeep
+temp/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
