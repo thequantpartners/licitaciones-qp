@@ -28,6 +28,21 @@ export class WhatsAppDispatcher {
       fs.mkdirSync(this.authDir, { recursive: true });
     }
 
+    const storageDir = path.resolve(process.env.STORAGE_DIR || './storage');
+    const tarFile = path.join(storageDir, 'whatsapp_auth.tar.gz');
+    const credsFile = path.join(this.authDir, 'creds.json');
+
+    if (fs.existsSync(tarFile) && !fs.existsSync(credsFile)) {
+      try {
+        console.log('[WhatsApp] Descomprimiendo sesión respaldada desde whatsapp_auth.tar.gz...');
+        const { execSync } = await import('child_process');
+        execSync(`tar -xzf "${tarFile}" -C "${storageDir}"`);
+        console.log('✅ [WhatsApp] Sesión restaurada con éxito desde tar.gz!');
+      } catch (err: any) {
+        console.error('[WhatsApp] Error descomprimiendo backup de sesión:', err.message);
+      }
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
 
     this.sock = makeWASocket({
@@ -80,6 +95,15 @@ export class WhatsAppDispatcher {
       } else if (connection === 'open') {
         console.log('✅ [WhatsApp] Conexión establecida con éxito! Dispositivo enlazado y listo.');
         this.isReady = true;
+
+        // Respaldar sesión en tar.gz en segundo plano para máxima portabilidad
+        try {
+          const { exec } = await import('child_process');
+          const storageDir = path.resolve(process.env.STORAGE_DIR || './storage');
+          exec(`tar -czf "${path.join(storageDir, 'whatsapp_auth.tar.gz')}" -C "${storageDir}" whatsapp_auth`);
+        } catch {
+          // Ignorar error de empaquetado secundario
+        }
       }
     });
   }
