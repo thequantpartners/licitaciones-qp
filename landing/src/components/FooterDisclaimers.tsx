@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Scale, BookOpen, ShieldAlert, Mail } from "lucide-react";
 import { LibroReclamacionesModal } from "./LibroReclamacionesModal";
 import { LegalModal } from "./LegalModal";
@@ -65,6 +66,8 @@ export const FooterDisclaimers = () => {
                 <li><a href="#oferta" className="hover:text-gold transition-colors">Plan Piloto Fundador</a></li>
                 <li><a href="#garantia" className="hover:text-gold transition-colors">Garantía de Precisión</a></li>
                 <li><a href="#faq" className="hover:text-gold transition-colors">Preguntas Frecuentes</a></li>
+                <li><Link href="/login" className="text-gold-light hover:text-white transition-colors">Portal de Clientes</Link></li>
+                <li><Link href="/admin" className="text-slate-600 hover:text-[#D4AF37] transition-colors text-[10px] font-mono block pt-1">Consola Superadmin</Link></li>
               </ul>
             </div>
 
