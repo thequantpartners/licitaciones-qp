@@ -25,6 +25,7 @@ storage/whatsapp_auth/
 !storage/.gitkeep
 temp/
 *.log
+*.tar.gz
 
 # OS files
 .DS_Store
