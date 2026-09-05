@@ -10,6 +10,8 @@
     "cli": "tsx src/cli/index.ts",
     "scrape:salud": "tsx src/cli/index.ts --mode scrape --sector salud",
     "audit": "tsx src/cli/index.ts --mode audit",
+    "worker": "tsx src/scheduler/autonomous_worker.ts",
+    "worker:prod": "node dist/scheduler/autonomous_worker.js",
     "test:evaluator": "tsx src/test/test_evaluator.ts",
     "test:pdf": "tsx src/test/test_pdf_generation.ts"
   },
@@ -26,6 +28,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "dotenv": "^16.4.7",
+    "node-cron": "^4.6.0",
     "pdf-parse": "^2.4.5",
     "playwright": "^1.50.1",
     "unpdf": "^1.8.1",
@@ -33,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }

@@ -1,0 +1,17 @@
+services:
+  licitaciones-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitaciones-qp-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 6 * * *}
+      - TARGET_KEYWORD=${TARGET_KEYWORD:-MEDICO}
+    volumes:
+      - ./storage:/app/storage
+      - ./landing/public/reportes:/app/landing/public/reportes
+    ipc: host

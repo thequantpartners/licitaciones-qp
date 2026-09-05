@@ -1,0 +1,10 @@
+node_modules
+landing/node_modules
+landing/.next
+.git
+.env*.local
+storage/raw_bases/*
+storage/matrices_generadas/*
+!storage/.gitkeep
+*.log
+.vercel
