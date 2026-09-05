@@ -297,6 +297,48 @@ export class AutonomousWorker {
   }
 
   /**
+   * Procesa las solicitudes de alertas demo y notificaciones encoladas en Supabase
+   */
+  async procesarColaDespacho(): Promise<void> {
+    const client = SupabaseDatabase.getClient();
+    if (!client) return;
+
+    try {
+      const { data, error } = await client
+        .from('alertas_despacho')
+        .select('*')
+        .eq('estado', 'PENDIENTE')
+        .limit(5);
+
+      if (error || !data || data.length === 0) return;
+
+      for (const item of data) {
+        console.log(`[Cola Despacho] Procesando alerta pendiente para ${item.telefono}...`);
+
+        if (process.env.ENABLE_WHATSAPP === 'true' && WhatsAppDispatcher.estaConectado()) {
+          const enviado = await WhatsAppDispatcher.enviarAlerta(item.telefono, item.mensaje);
+          if (enviado) {
+            await client
+              .from('alertas_despacho')
+              .update({ estado: 'ENVIADO', sent_at: new Date().toISOString() })
+              .eq('id', item.id);
+            console.log(`✅ [Cola Despacho] Alerta entregada con éxito a ${item.telefono}`);
+          } else {
+            await client
+              .from('alertas_despacho')
+              .update({ estado: 'ERROR', error_mensaje: 'Fallo al enviar vía Baileys' })
+              .eq('id', item.id);
+          }
+        } else {
+          console.warn(`[Cola Despacho] WhatsApp no conectado. Alerta para ${item.telefono} en espera.`);
+        }
+      }
+    } catch (err: any) {
+      console.error('[Cola Despacho] Error en procesarColaDespacho:', err.message);
+    }
+  }
+
+  /**
    * Inicia el planificador cron de fondo
    */
   iniciarDaemon(): void {
@@ -311,6 +353,9 @@ export class AutonomousWorker {
         console.error('[Daemon] Error iniciando WhatsApp:', err.message);
       });
     }
+
+    // Monitorear cola de despacho cada 3 segundos
+    setInterval(() => this.procesarColaDespacho(), 3000);
 
     cron.schedule(this.cronSchedule, async () => {
       console.log(`[Daemon] Cron disparado según horario: ${this.cronSchedule}`);

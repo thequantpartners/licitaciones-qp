@@ -33,7 +33,7 @@ export interface LicitacionAuditadaInput {
 export class SupabaseDatabase {
   private static client: SupabaseClient | null = null;
 
-  private static getClient(): SupabaseClient | null {
+  static getClient(): SupabaseClient | null {
     if (this.client) return this.client;
 
     const supabaseUrl = process.env.SUPABASE_URL;

@@ -19,6 +19,7 @@ import {
   Check,
   Sparkles,
   ArrowRight,
+  Send,
 } from 'lucide-react';
 import type { TenantPortalData, Tenant, LicitacionAuditada, TenantMetrics } from '@/types/portal';
 
@@ -29,7 +30,10 @@ export function TenantPortalClient({ initialData, slug }: { initialData: TenantP
   const [filterDictamen, setFilterDictamen] = useState<'TODOS' | 'VIABLE' | 'SUBSANABLE' | 'NO_VIABLE'>('TODOS');
 
   // WhatsApp Config state
-  const [whatsappNumber, setWhatsappNumber] = useState(initialData.tenant.whatsapp_destino || '51924464410');
+  const [whatsappNumber, setWhatsappNumber] = useState(
+    slug === 'consorcio-medico' ? '' : (initialData.tenant.whatsapp_destino?.replace(/^51/, '') || '')
+  );
+  const [hasConsent, setHasConsent] = useState(false);
   const [isSavingWhatsapp, setIsSavingWhatsapp] = useState(false);
   const [whatsappFeedback, setWhatsappFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
 
@@ -40,7 +44,9 @@ export function TenantPortalClient({ initialData, slug }: { initialData: TenantP
       if (res.ok) {
         const freshData = await res.json();
         setData(freshData);
-        setWhatsappNumber(freshData.tenant.whatsapp_destino);
+        if (slug !== 'consorcio-medico') {
+          setWhatsappNumber(freshData.tenant.whatsapp_destino?.replace(/^51/, '') || '');
+        }
       }
     } catch (err) {
       console.error('Error refreshing portal data:', err);
@@ -51,6 +57,14 @@ export function TenantPortalClient({ initialData, slug }: { initialData: TenantP
 
   const handleSaveWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasConsent) {
+      setWhatsappFeedback({
+        success: false,
+        message: 'Debe marcar la casilla de consentimiento (Ley N° 29733) para autorizar el envío de la demo.',
+      });
+      return;
+    }
+
     setIsSavingWhatsapp(true);
     setWhatsappFeedback(null);
 
@@ -58,27 +72,28 @@ export function TenantPortalClient({ initialData, slug }: { initialData: TenantP
       const res = await fetch(`/api/portal/${slug}/whatsapp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsapp: whatsappNumber }),
+        body: JSON.stringify({ whatsapp: whatsappNumber, consentimiento: hasConsent }),
       });
 
       const json = await res.json();
       if (res.ok) {
         setWhatsappFeedback({
           success: true,
-          message: `Número actualizado a +${json.whatsapp}. Las próximas auditorías de su sector se enviarán aquí.`,
+          message: json.message || `¡Alerta demo enviada con éxito a +${json.whatsapp}! Revise su WhatsApp en 5-10 segundos.`,
         });
-        setData((prev) => ({
-          ...prev,
-          tenant: { ...prev.tenant, whatsapp_destino: json.whatsapp },
-        }));
+        if (slug !== 'consorcio-medico') {
+          setData((prev) => ({
+            ...prev,
+            tenant: { ...prev.tenant, whatsapp_destino: json.whatsapp },
+          }));
+        }
       } else {
-        setWhatsappFeedback({ success: false, message: json.error || 'Error al guardar número' });
+        setWhatsappFeedback({ success: false, message: json.error || 'Error al procesar solicitud.' });
       }
     } catch (err: any) {
       setWhatsappFeedback({ success: false, message: `Error de conexión: ${err.message}` });
     } finally {
       setIsSavingWhatsapp(false);
-      setTimeout(() => setWhatsappFeedback(null), 6000);
     }
   };
 
@@ -263,60 +278,83 @@ export function TenantPortalClient({ initialData, slug }: { initialData: TenantP
           </div>
         </div>
 
-        {/* WhatsApp Notification Dispatcher Center (Key User Requirement) */}
+        {/* WhatsApp Notification Dispatcher Center / Demo Dispatcher */}
         <div className="card-luxury rounded-2xl p-6 sm:p-8 border border-[#D4AF37]/25 relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
             <div className="max-w-xl">
               <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-mono text-[10px] uppercase tracking-wider mb-3">
-                <Smartphone className="w-3 h-3" /> Centro de Despacho Inmediato
+                <Smartphone className="w-3 h-3" /> Simulador de Alerta Pericial en Vivo
               </div>
               <h2 className="font-serif text-xl sm:text-2xl font-medium text-white tracking-tight">
-                Número de WhatsApp Receptor de Alertas
+                Pruebe la Entrega Inmediata a su WhatsApp
               </h2>
               <p className="mt-2 text-sm text-slate-400 font-light leading-relaxed">
-                Cada vez que una licitación de su rubro es detectada y auditada por nuestro motor de IA, 
-                el informe pericial en PDF y el semáforo de requisitos se envían de forma instantánea a este número.
+                Ingrese su número celular para recibir en este instante el Dictamen Pericial A4 de EsSalud Piura (<span className="font-mono text-slate-300">CP SER-SM-3-2026-ESSALUD/RAPI-1</span>) directamente en su WhatsApp y experimentar la velocidad de alerta del sistema.
               </p>
             </div>
 
-            <form onSubmit={handleSaveWhatsApp} className="flex-1 max-w-md w-full flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative w-full">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
-                  🇵🇪 +51
-                </span>
-                <input
-                  type="text"
-                  value={whatsappNumber.replace(/^51/, '')}
-                  onChange={(e) => setWhatsappNumber(`51${e.target.value.replace(/\D/g, '')}`)}
-                  placeholder="924464410"
-                  className="w-full pl-16 pr-4 py-3 bg-[#030407] border border-white/10 rounded-xl text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
-                />
+            <form onSubmit={handleSaveWhatsApp} className="flex-1 max-w-lg w-full flex flex-col gap-3.5">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative w-full">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                    🇵🇪 +51
+                  </span>
+                  <input
+                    type="text"
+                    value={whatsappNumber.replace(/^51/, '')}
+                    onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ej. 987 654 321"
+                    maxLength={9}
+                    className="w-full pl-16 pr-4 py-3 bg-[#030407] border border-white/10 rounded-xl text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingWhatsapp || !whatsappNumber.trim() || !hasConsent}
+                  className="btn-primary w-full sm:w-auto text-xs py-3 px-6 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingWhatsapp ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Recibir Alerta Demo</span>
+                    </>
+                  )}
+                </button>
               </div>
 
-              <button
-                type="submit"
-                disabled={isSavingWhatsapp}
-                className="btn-primary w-full sm:w-auto text-xs py-3 px-6 whitespace-nowrap"
-              >
-                {isSavingWhatsapp ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Guardar
-                  </>
-                )}
-              </button>
+              {/* Legal Opt-in Consent Checkbox (Ley N° 29733 & Ley N° 29571) */}
+              <div className="flex items-start gap-2.5 pt-1">
+                <input
+                  type="checkbox"
+                  id="optin-consent"
+                  checked={hasConsent}
+                  onChange={(e) => setHasConsent(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded bg-[#030407] border border-white/20 text-[#D4AF37] focus:ring-[#D4AF37] accent-[#D4AF37] cursor-pointer shrink-0"
+                />
+                <label htmlFor="optin-consent" className="text-[11px] text-slate-400 font-light leading-relaxed cursor-pointer select-none">
+                  Autorizo a <span className="text-slate-300 font-medium">The Quant Partners</span> a tratar mi número celular conforme a la <span className="text-[#D4AF37] font-medium">Ley N° 29733</span> (Protección de Datos Personales), <span className="underline decoration-slate-600">exclusivamente para el envío inmediato de este informe pericial demo</span>. No recibiré llamadas comerciales ni mensajes no solicitados (Art. 58 Ley N° 29571).
+                </label>
+              </div>
             </form>
           </div>
 
           {whatsappFeedback && (
-            <div className={`mt-4 p-3 rounded-xl border text-xs font-mono ${
+            <div className={`mt-5 p-4 rounded-xl border text-xs font-mono flex items-start gap-2.5 ${
               whatsappFeedback.success
                 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
                 : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
             }`}>
-              {whatsappFeedback.message}
+              {whatsappFeedback.success ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+              )}
+              <div className="leading-relaxed">
+                {whatsappFeedback.message}
+              </div>
             </div>
           )}
         </div>
