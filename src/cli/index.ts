@@ -198,34 +198,53 @@ async function main() {
       process.exit(1);
     }
     const rutaPdf = args[pdfArgIndex + 1];
-    console.log(`Iniciando auditoría real con Gemini 1.5 Flash para: ${rutaPdf}...`);
+    const nomIndex = args.indexOf('--nomenclatura');
+    const entIndex = args.indexOf('--entidad');
+    const montoIndex = args.indexOf('--monto');
+
+    const nomenclatura = nomIndex !== -1 ? args[nomIndex + 1] : 'CP SER-SM-3-2026-ESSALUD/RAPI-1';
+    const entidad = entIndex !== -1 ? args[entIndex + 1] : 'Seguro Social de Salud - Red Asistencial Piura';
+    const valorReferencial = montoIndex !== -1 ? parseFloat(args[montoIndex + 1]) : 2850000;
+
+    console.log(`Iniciando auditoría pericial con Gemini 2.5 Flash para: ${path.basename(rutaPdf)}...`);
+    console.log(`- Nomenclatura: ${nomenclatura}`);
+    console.log(`- Entidad: ${entidad}`);
+    console.log(`- Valor Referencial: S/. ${valorReferencial.toLocaleString('es-PE')}\n`);
 
     const auditor = new GeminiAuditorEngine();
     const matriz = await auditor.auditarBasesPdf(rutaPdf, {
-      nomenclatura: 'CONVOCATORIA_ANALIZADA',
-      entidad: 'ENTIDAD_PUBLICA',
-      valor_referencial_pen: 500000
+      nomenclatura,
+      entidad,
+      valor_referencial_pen: valorReferencial
     });
 
-    const pdfOut = path.join(storageDir, `Auditoria_${Date.now()}.pdf`);
+    const safeFileName = `Auditoria_${nomenclatura.replace(/[\s\/\\:]/g, '_')}.pdf`;
+    const pdfOut = path.join(storageDir, safeFileName);
     await PdfReportGenerator.generarPdf(matriz, pdfOut);
-    console.log(`\n✅ Auditoría completada. PDF generado en: ${pdfOut}\n`);
+
+    const publicReportDir = path.resolve(process.cwd(), 'landing/public/reportes');
+    if (!fs.existsSync(publicReportDir)) fs.mkdirSync(publicReportDir, { recursive: true });
+    fs.copyFileSync(pdfOut, path.join(publicReportDir, safeFileName));
+
+    console.log(`\n✅ Auditoría pericial completada.`);
+    console.log(`📄 PDF generado: ${pdfOut}`);
+    console.log(`🌐 Publicado en web: https://licitaciones.thequantpartners.com/reportes/${safeFileName}\n`);
 
     const contactoDemo = {
       nombre_destinatario: 'Gerente General / Jefe de Licitaciones',
-      cargo: 'Dirección Comercial',
-      empresa: 'Proveedor Estratégico',
-      telefono_whatsapp: '+51 999 999 999'
+      cargo: 'Dirección Comercial & Licitaciones',
+      empresa: 'Proveedor del Rubro Biomédico',
+      telefono_whatsapp: '+51 987 654 321'
     };
 
     const mensajeWhatsApp = OutreachDispatcher.generarMensajeWhatsApp(
       matriz,
       contactoDemo,
-      `https://licitacionesqp.com/reportes/${path.basename(pdfOut)}`
+      `https://licitaciones.thequantpartners.com/reportes/${safeFileName}`
     );
 
     console.log('----------------------------------------------------------------');
-    console.log('📲 COPY LISTO PARA WHATSAPP EJECUTIVO (Valor Anticipado):');
+    console.log('📲 COPY LISTO PARA WHATSAPP EJECUTIVO (Caballo de Troya):');
     console.log('----------------------------------------------------------------');
     console.log(mensajeWhatsApp);
     console.log('----------------------------------------------------------------\n');

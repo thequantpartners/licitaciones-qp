@@ -142,21 +142,47 @@ Devuelve el JSON con este esquema exacto:
 }
 `;
 
-    console.log(`[Auditor Engine] Enviando a OpenRouter (${this.model})...`);
+    const isScanned = textoTotal.trim().length < 500;
+    if (isScanned) {
+      console.log(`[Auditor Engine] Documento escaneado detectado (${textoTotal.trim().length} chars). Activando modo Multimodal RAG con visión nativa...`);
+    }
+
+    const messages: any[] = [
+      { role: 'system', content: systemPrompt }
+    ];
+
+    if (isScanned) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: userPrompt },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:application/pdf;base64,${pdfBuffer.toString('base64')}`
+            }
+          }
+        ]
+      });
+    } else {
+      messages.push({
+        role: 'user',
+        content: userPrompt
+      });
+    }
+
+    console.log(`[Auditor Engine] Enviando solicitud pericial a OpenRouter (${this.model})...`);
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.openRouterKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://licitacionesqp.com',
+        'HTTP-Referer': 'https://thequantpartners.com',
         'X-Title': 'Licitaciones QP Engine'
       },
       body: JSON.stringify({
         model: this.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
+        messages,
         temperature: 0.1,
         response_format: { type: 'json_object' }
       })

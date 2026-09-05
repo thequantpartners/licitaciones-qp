@@ -18,6 +18,7 @@ landing/.env*
 # Local storage and cache
 storage/raw_bases/*
 storage/matrices_generadas/*
+storage/*.png
 !storage/.gitkeep
 temp/
 *.log
