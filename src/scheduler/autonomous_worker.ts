@@ -332,6 +332,7 @@ export class AutonomousWorker {
         } else {
           console.warn(`[Cola Despacho] WhatsApp no conectado. Alerta para ${item.telefono} en espera.`);
         }
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch (err: any) {
       console.error('[Cola Despacho] Error en procesarColaDespacho:', err.message);
