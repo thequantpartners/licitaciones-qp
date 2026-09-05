@@ -19,6 +19,9 @@ landing/.env*
 storage/raw_bases/*
 storage/matrices_generadas/*
 storage/*.png
+storage/*.txt
+storage/*.json
+storage/whatsapp_auth/
 !storage/.gitkeep
 temp/
 *.log

@@ -21,18 +21,21 @@ export class GeminiAuditorEngine {
   /**
    * Extrae el texto del PDF paginado para que el LLM sepa con exactitud el número de página de cada cláusula
    */
-  private async extraerTextoConPaginas(pdfBuffer: Buffer): Promise<{ textoTotal: string; numPaginas: number }> {
+  private async extraerTextoConPaginas(pdfBuffer: Buffer): Promise<{ textoTotal: string; numPaginas: number; caracteresReales: number }> {
     const uint8Array = new Uint8Array(pdfBuffer);
     const { text, totalPages } = await extractText(uint8Array);
 
     let textoEstructurado = '';
+    let caracteresReales = 0;
     text.forEach((paginaTexto, index) => {
+      caracteresReales += paginaTexto.trim().length;
       textoEstructurado += `\n\n=== PÁGINA ${index + 1} ===\n${paginaTexto}`;
     });
 
     return {
       textoTotal: textoEstructurado,
-      numPaginas: totalPages
+      numPaginas: totalPages,
+      caracteresReales
     };
   }
 
@@ -59,8 +62,8 @@ export class GeminiAuditorEngine {
 
     console.log(`[Auditor Engine] Extrayendo páginas y estructura de: ${path.basename(pdfPath)}...`);
     const pdfBuffer = fs.readFileSync(pdfPath);
-    const { textoTotal, numPaginas } = await this.extraerTextoConPaginas(pdfBuffer);
-    console.log(`[Auditor Engine] Documento procesado: ${numPaginas} páginas extraídas.`);
+    const { textoTotal, numPaginas, caracteresReales } = await this.extraerTextoConPaginas(pdfBuffer);
+    console.log(`[Auditor Engine] Documento procesado: ${numPaginas} páginas (${caracteresReales} caracteres de texto digital).`);
 
     const systemPrompt = `
 Eres Smith, socio auditor legal y técnico de élite especializado en Contrataciones con el Estado Peruano (Ley N° 30225 y su Reglamento).
@@ -84,7 +87,73 @@ REGLA DE ORO:
 - Devuelve la respuesta EXCLUSIVAMENTE en formato JSON válido que cumpla con la estructura de la Matriz de Cumplimiento.
 `;
 
-    const userPrompt = `
+    const isScanned = caracteresReales < 1000;
+    if (isScanned) {
+      console.log(`[Auditor Engine] Documento escaneado detectado (${caracteresReales} caracteres legibles). Activando visión multimodal nativa...`);
+    }
+
+    const userPrompt = isScanned
+      ? `
+Audita este expediente oficial escaneado adjunto mediante visión pericial de documentos:
+- Nomenclatura: ${metadata.nomenclatura}
+- Entidad: ${metadata.entidad}
+- Valor Referencial: S/. ${metadata.valor_referencial_pen.toLocaleString('es-PE')}
+- Total Páginas: ${numPaginas}
+
+INSTRUCCIONES CLAVE DE AUDITORÍA:
+1. Revisa minuciosamente los folios y páginas del documento PDF adjunto.
+2. Localiza la sección de TDR / Requerimientos Técnicos Mínimos (Capítulo III), las penalidades (Capítulo III / Proforma de Contrato), los Factores de Evaluación (Capítulo IV) y los documentos obligatorios de presentación.
+3. Extrae la información con exactitud pericial, indicando las páginas reales del PDF de cada hallazgo.
+4. Devuelve la matriz EXCLUSIVAMENTE en el formato JSON especificado.
+
+Devuelve el JSON con este esquema exacto:
+{
+  "convocatoria_id": "${metadata.nomenclatura}",
+  "nomenclatura": "${metadata.nomenclatura}",
+  "entidad": "${metadata.entidad}",
+  "valor_referencial_pen": ${metadata.valor_referencial_pen},
+  "semaforo_general": "VERDE_VIABLE" | "AMARILLO_SUBSANABLE" | "ROJO_NO_VIABLE",
+  "score_viabilidad_porcentaje": number,
+  "resumen_ejecutivo": "string",
+  "requisitos_tecnicos": [
+    {
+      "item_num": 1,
+      "categoria": "string",
+      "descripcion": "string",
+      "pagina_bases": "string (ej. Pág. 42)",
+      "nivel_criticidad": "CRITICO_EXCLUYENTE" | "SUBSANABLE" | "PUNTAJE_ADICIONAL",
+      "documento_acreditacion_exigido": "string",
+      "observacion_estrategica": "string"
+    }
+  ],
+  "alertas_y_penalidades": [
+    {
+      "tipo": "PENALIDAD_LEONINA" | "PLAZO_CRITICO" | "DIRECCIONAMIENTO_SOSPECHOSO" | "GARANTIA_EXCESIVA",
+      "titulo": "string",
+      "descripcion": "string",
+      "pagina_bases": "string (ej. Pág. 68)",
+      "impacto_riesgo": "ALTO" | "MEDIO" | "BAJO",
+      "recomendacion_accion": "string"
+    }
+  ],
+  "factores_evaluacion": [
+    {
+      "criterio": "string",
+      "puntaje_maximo": number,
+      "como_maximizar": "string"
+    }
+  ],
+  "checklist_documentos": [
+    {
+      "documento": "string",
+      "obligatorio": true,
+      "detalles_subsanacion": "string"
+    }
+  ],
+  "conclusiones_y_siguiente_paso": "string"
+}
+`
+      : `
 Audita este expediente oficial:
 - Nomenclatura: ${metadata.nomenclatura}
 - Entidad: ${metadata.entidad}
@@ -142,11 +211,6 @@ Devuelve el JSON con este esquema exacto:
 }
 `;
 
-    const isScanned = textoTotal.trim().length < 500;
-    if (isScanned) {
-      console.log(`[Auditor Engine] Documento escaneado detectado (${textoTotal.trim().length} chars). Activando modo Multimodal RAG con visión nativa...`);
-    }
-
     const messages: any[] = [
       { role: 'system', content: systemPrompt }
     ];
@@ -202,6 +266,21 @@ Devuelve el JSON con este esquema exacto:
     console.log(`[Auditor Engine] Respuesta recibida. Validando determinismo con Zod...`);
     const cleaned = content.replace(/```json\n?|\n?```/g, '').trim();
     const parsed = JSON.parse(cleaned);
+
+    // Normalizar semáforo si viene en formato libre
+    if (parsed.semaforo_general) {
+      const s = String(parsed.semaforo_general).toUpperCase();
+      if (s.includes('ROJO') || s.includes('NO VIABLE')) parsed.semaforo_general = 'ROJO_NO_VIABLE';
+      else if (s.includes('AMARILLO') || s.includes('SUBSANABLE')) parsed.semaforo_general = 'AMARILLO_SUBSANABLE';
+      else parsed.semaforo_general = 'VERDE_VIABLE';
+    }
+
+    // Asegurar compatibilidad de arrays
+    if (!Array.isArray(parsed.requisitos_tecnicos)) parsed.requisitos_tecnicos = [];
+    if (!Array.isArray(parsed.alertas_y_penalidades)) parsed.alertas_y_penalidades = [];
+    if (!Array.isArray(parsed.factores_evaluacion)) parsed.factores_evaluacion = [];
+    if (!Array.isArray(parsed.checklist_documentos)) parsed.checklist_documentos = [];
+
     const validada = MatrizCumplimientoSchema.parse(parsed);
     return validada;
   }

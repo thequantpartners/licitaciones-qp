@@ -5,6 +5,9 @@ import { chromium } from 'playwright';
 import { GeminiAuditorEngine } from '../evaluator/gemini_engine.js';
 import { PdfReportGenerator } from '../reports/pdf_generator.js';
 import { NotifierWebhook } from '../dispatchers/notifier_webhook.js';
+import { SupabaseUploader } from '../storage/supabase_uploader.js';
+import { WhatsAppDispatcher } from '../dispatchers/whatsapp_baileys.js';
+import { SupabaseDatabase } from '../database/supabase_db.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -206,14 +209,57 @@ export class AutonomousWorker {
       const pdfOut = path.join(this.storageReportesDir, safeName);
       await PdfReportGenerator.generarPdf(matriz, pdfOut);
 
-      // Copiar a la carpeta pública de la web para acceso inmediato
+      // Copiar a la carpeta pública de la web para acceso local
       const webPdfPath = path.join(this.webReportesDir, safeName);
       fs.copyFileSync(pdfOut, webPdfPath);
 
-      const publicUrl = `https://licitaciones.thequantpartners.com/reportes/${safeName}`;
+      // Subir a Supabase Storage CDN permanente
+      const publicUrl = await SupabaseUploader.subirReportePdf(pdfOut, safeName);
       console.log(`✅ [Worker] Informe A4 publicado en: ${publicUrl}`);
 
-      // Registrar en el almacén de deduplicación
+      // Registrar en Supabase PostgreSQL Multi-Tenant
+      const dictamenCalculado = matriz.score_viabilidad_porcentaje >= 85 
+        ? 'VIABLE' 
+        : (matriz.score_viabilidad_porcentaje >= 60 ? 'SUBSANABLE' : 'NO_VIABLE');
+
+      const matchingTenants = await SupabaseDatabase.obtenerTenantsParaLicitacion(target.objeto);
+      console.log(`🏢 [Worker] Tenants receptores identificados: ${matchingTenants.length}`);
+
+      for (const tenant of matchingTenants) {
+        await SupabaseDatabase.registrarLicitacion({
+          tenant_id: tenant.id,
+          nomenclatura: target.nomenclatura,
+          entidad: target.entidad,
+          objeto: target.objeto,
+          monto_pen: valorEstimado,
+          score_viabilidad: matriz.score_viabilidad_porcentaje,
+          dictamen: dictamenCalculado,
+          penalidades_criticas: matriz.alertas_y_penalidades.length,
+          horas_ahorradas: 18.5,
+          pdf_cdn_url: publicUrl,
+          detalles: {
+            resumen: matriz.resumen_ejecutivo,
+            alertas: matriz.alertas_y_penalidades.map(a => a.titulo)
+          }
+        });
+
+        // Enviar WhatsApp al número configurado por el tenant
+        if (process.env.ENABLE_WHATSAPP === 'true' && tenant.whatsapp_destino) {
+          const mensajeTenant = `🏛️ *LICITACIONES QP • INFORME PERICIAL SEACE*\n\n` +
+            `🏢 *Empresa:* ${tenant.nombre_comercial}\n` +
+            `📋 *Proceso:* ${target.nomenclatura}\n` +
+            `🏥 *Entidad:* ${target.entidad}\n` +
+            `💰 *Valor Estimado:* S/. ${valorEstimado.toLocaleString('es-PE')}\n` +
+            `🎯 *Dictamen:* ${dictamenCalculado} (${matriz.score_viabilidad_porcentaje}/100)\n` +
+            `⚠️ *Penalidades Detectadas:* ${matriz.alertas_y_penalidades.length}\n\n` +
+            `📄 *Descargar Dictamen Pericial A4:*\n${publicUrl}\n\n` +
+            `📊 *Ver en su Panel Ejecutivo:*\nhttps://licitaciones.thequantpartners.com/portal/${tenant.slug}`;
+
+          await WhatsAppDispatcher.enviarAlerta(tenant.whatsapp_destino, mensajeTenant);
+        }
+      }
+
+      // Registrar en el almacén de deduplicación local
       const record: ProcessedTender = {
         id: target.nomenclatura,
         nomenclatura: target.nomenclatura,
@@ -227,7 +273,7 @@ export class AutonomousWorker {
       };
       this.saveProcessedTender(record);
 
-      // Despachar alerta instantánea al fundador
+      // Despachar alerta instantánea general al fundador (Telegram)
       const alertasCriticas = matriz.alertas_y_penalidades.map(a => `${a.titulo} (${a.pagina_bases})`);
       await NotifierWebhook.despacharAlerta({
         nomenclatura: target.nomenclatura,
@@ -236,7 +282,8 @@ export class AutonomousWorker {
         valorReferencial: valorEstimado,
         scoreViabilidad: matriz.score_viabilidad_porcentaje,
         hallazgosCriticos: alertasCriticas.length > 0 ? alertasCriticas : ['Sin penalidades atípicas detectadas.'],
-        pdfUrl: publicUrl
+        pdfUrl: publicUrl,
+        pdfLocalPath: pdfOut
       });
 
       console.log(`🎉 [Worker] Convocatoria ${target.nomenclatura} procesada con éxito.\n`);
@@ -257,6 +304,13 @@ export class AutonomousWorker {
     console.log('🤖 LICITACIONES QP | AUTONOMOUS BACKGROUND DAEMON ACTIVO');
     console.log(`Cron schedule: "${this.cronSchedule}" (Ejecución automática)`);
     console.log('================================================================');
+
+    if (process.env.ENABLE_WHATSAPP === 'true') {
+      console.log('[Daemon] Activando servicio de WhatsApp con Baileys...');
+      WhatsAppDispatcher.inicializar().catch(err => {
+        console.error('[Daemon] Error iniciando WhatsApp:', err.message);
+      });
+    }
 
     cron.schedule(this.cronSchedule, async () => {
       console.log(`[Daemon] Cron disparado según horario: ${this.cronSchedule}`);
